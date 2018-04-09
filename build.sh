@@ -1,0 +1,1 @@
+gcc -O2 -std=c99 -DHAVE_CURL -D_DEBUG *.c jfes/*.c -o toy -lcurl -lglfw -ldl -lm

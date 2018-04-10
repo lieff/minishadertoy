@@ -515,7 +515,7 @@ int main(int argc, char **argv)
         int j;
         for (j = 0; j < inputs->data.array_val->count; j++)
         {
-           static const char *types[] = { "texture", "buffer", "cubemap", "musicstream", "keyboard", 0 };
+           static const char *types[] = { "texture", "buffer", "cubemap", "musicstream", "music", "keyboard", 0 };
            jfes_value_t *input = inputs->data.array_val->items[j];
            jfes_value_t *iid   = jfes_get_child(input, "id", 0);
            int itype = switch_val(jfes_get_child(input, "type", 0), types);

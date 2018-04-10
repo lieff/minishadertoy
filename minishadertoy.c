@@ -74,12 +74,14 @@ static char *load_url(const char *url, int *size, int is_post)
     CURL *curl;
     CURLcode res;
     curl = curl_easy_init();
+    if (!curl)
+        return 0;
     if (is_post)
     {
         char buf[256];
         char *id = strrchr(url, '/');
         if (!id)
-            return 0;
+            goto fail;
         snprintf(buf, sizeof(buf), "s={ \"shaders\" : [\"%s\"] }", id + 1);
         curl_easy_setopt(curl, CURLOPT_URL, "https://www.shadertoy.com/shadertoy");
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, buf);
@@ -96,6 +98,7 @@ static char *load_url(const char *url, int *size, int is_post)
         printf("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
         return 0;
     }
+fail:
     curl_easy_cleanup(curl);
     *size = b.m_buf_size;
     //printf("%d readed\n", *size);
@@ -115,11 +118,14 @@ static int mkpath(char *path)
     strcpy(buffer, path);
 
     if (buffer[len - 1] == '/')
-        buffer[len - 1] = '\0';
-    if (mkdir(buffer MKDIRARGS) == 0)
     {
-        free(buffer);
-        return 1;
+        buffer[len - 1] = '\0';
+        if (!mkdir(buffer MKDIRARGS))
+        {
+            free(buffer);
+            return 1;
+        }
+        buffer[len - 1] = '/';
     }
 
     char *p = buffer + 1;
@@ -138,6 +144,7 @@ static int mkpath(char *path)
     free(buffer);
     return 1;
 fail:
+    printf("error: creating %s failed", path);
     if (buffer)
         free(buffer);
     return 0;
@@ -548,8 +555,8 @@ int main(int argc, char **argv)
                 {
                     img = load_url(buf, &buf_size, 0);
                     printf("load %s (%d bytes)\n", buf, buf_size);
-                    mkpath(filepath->data.string_val.data + 1);
-                    FILE *f = fopen(filepath->data.string_val.data + 1, "wb");
+                    mkpath(buf + 26);
+                    FILE *f = fopen(buf + 26, "wb");
                     if (f)
                     {
                         fwrite(img, 1, buf_size, f);

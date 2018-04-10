@@ -1,16 +1,9 @@
-#define __STDC_WANT_LIB_EXT2__ 1
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 #include <time.h>
 #include <sys/stat.h>
-#ifndef __MINGW32__
-#include <alloca.h>
-#define MKDIRARGS ,0777
-#else
-#define MKDIRARGS
-#endif
 #include <errno.h>
 #include "glad.h"
 #include "jfes/jfes.h"
@@ -18,6 +11,12 @@
 #include "minishadertoy.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+
+#ifndef __MINGW32__
+#define MKDIRARGS ,0777
+#else
+#define MKDIRARGS
+#endif
 
 static GLFWwindow *_mainWindow;
 
@@ -438,7 +437,7 @@ int shader_init(SHADER *s, const char *pCode, int is_compute)
     {
         GLint maxLength = 0;
         glGetShaderiv(s->shader, GL_INFO_LOG_LENGTH, &maxLength);
-        GLchar *errorLog = (GLchar *)alloca(maxLength);
+        GLchar *errorLog = (GLchar *)malloc(maxLength);
         glGetShaderInfoLog(s->shader, maxLength, &maxLength, &errorLog[0]);
         printf("compile error: %s", errorLog);
         printf("code: %s", sh);
@@ -455,7 +454,7 @@ int shader_init(SHADER *s, const char *pCode, int is_compute)
     {
         GLint maxLength = 0;
         glGetProgramiv(s->prog, GL_INFO_LOG_LENGTH, &maxLength); GLCHK;
-        GLchar *errorLog = (GLchar *)alloca(maxLength);
+        GLchar *errorLog = (GLchar *)malloc(maxLength);
         glGetProgramInfoLog(s->prog, maxLength, &maxLength, &errorLog[0]); GLCHK;
         printf("link error: %s", errorLog);
         exit(1);

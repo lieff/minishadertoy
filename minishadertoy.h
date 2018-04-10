@@ -24,6 +24,7 @@ typedef struct SHADER_INPUT
 {
     const char *id;
     GLuint tex;
+    int is_cubemap;
     SAMPLER sampler;
 } SHADER_INPUT;
 

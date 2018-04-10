@@ -39,7 +39,10 @@ static const char *shader_header =
     "uniform vec4      iMouse;\n"
     "uniform vec4      iDate;\n"
     "uniform float     iSampleRate;\n"
-    "uniform sampler2D iChannel0, iChannel1, iChannel2, iChannel3;\n";
+    "uniform sampler%s iChannel0;\n"
+    "uniform sampler%s iChannel1;\n"
+    "uniform sampler%s iChannel2;\n"
+    "uniform sampler%s iChannel3;\n";
 
 static const char *shader_footer = 
     "\nvoid main(void) {\n"
@@ -326,7 +329,7 @@ static void gl_close()
     glfwTerminate();
 }
 
-static int load_image(const stbi_uc *data, int len, SAMPLER *s)
+static int load_image(const stbi_uc *data, int len, SAMPLER *s, int is_cubemap)
 {
     GLuint tex;
     int width, height, n;
@@ -335,9 +338,10 @@ static int load_image(const stbi_uc *data, int len, SAMPLER *s)
     if (!pix)
         return 0;
     glGenTextures(1, &tex); GLCHK;
-    glBindTexture(GL_TEXTURE_2D, tex); GLCHK;
+    int tgt = is_cubemap ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D;
+    glBindTexture(tgt, tex); GLCHK;
 #ifndef USE_GLES3
-    glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE); GLCHK;
+    glTexParameteri(tgt, GL_GENERATE_MIPMAP, GL_TRUE); GLCHK;
 #endif
     int clamp = GL_CLAMP_TO_EDGE, min_filter = GL_LINEAR_MIPMAP_LINEAR, mag_filter = GL_LINEAR;
     if (s)
@@ -345,19 +349,27 @@ static int load_image(const stbi_uc *data, int len, SAMPLER *s)
         clamp = s->wrap ? GL_REPEAT : GL_CLAMP_TO_EDGE;
         if (!s->filter)
         {
-            min_filter = GL_NEAREST_MIPMAP_NEAREST;
+            min_filter = GL_NEAREST;
             mag_filter = GL_NEAREST;
+        } else if (1 == s->filter)
+            min_filter = GL_LINEAR;
+    }
+    glTexParameteri(tgt, GL_TEXTURE_MIN_FILTER, min_filter); GLCHK;
+    glTexParameteri(tgt, GL_TEXTURE_MAG_FILTER, mag_filter); GLCHK;
+    glTexParameteri(tgt, GL_TEXTURE_WRAP_S, clamp); GLCHK;
+    glTexParameteri(tgt, GL_TEXTURE_WRAP_T, clamp); GLCHK;
+    if (is_cubemap)
+    {
+        for (int i = 0; i < 6; i++)
+        {   // TODO
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pix); GLCHK;
         }
     }
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, min_filter); GLCHK;
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mag_filter); GLCHK;
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp); GLCHK;
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp); GLCHK;
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pix); GLCHK;
+    glTexImage2D(tgt, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pix); GLCHK;
 #ifdef USE_GLES3
-    glGenerateMipmap(GL_TEXTURE_2D); GLCHK;
+    glGenerateMipmap(tgt); GLCHK;
 #endif
-    glBindTexture(GL_TEXTURE_2D, 0); GLCHK;
+    glBindTexture(tgt, 0); GLCHK;
     return (int)tex;
 }
 
@@ -400,11 +412,14 @@ void shader_delete(SHADER *s)
 
 int shader_init(SHADER *s, const char *pCode, int is_compute)
 {
-    size_t hdr_len = strlen(shader_header);
+    char header[1024];
+    snprintf(header, sizeof(header), shader_header, s->inputs[0].is_cubemap ? "Cube" : "2D", 
+        s->inputs[1].is_cubemap ? "Cube" : "2D", s->inputs[2].is_cubemap ? "Cube" : "2D", s->inputs[3].is_cubemap ? "Cube" : "2D");
+    size_t hdr_len = strlen(header);
     size_t source_len = strlen(pCode);
     size_t footer_len = strlen(shader_footer);
     GLchar *sh = (GLchar *)malloc(hdr_len + source_len + footer_len + 1);
-    memcpy(sh, shader_header, hdr_len);
+    memcpy(sh, header, hdr_len);
     memcpy(sh + hdr_len, pCode, source_len);
     sh[hdr_len + source_len] = 0;
     if (!strstr(sh, "void main("))
@@ -532,6 +547,7 @@ int main(int argc, char **argv)
            SHADER_INPUT *inp = s->inputs + ichannel->data.int_val;
            SAMPLER *smp = &inp->sampler;
            inp->id = iid->data.string_val.data;
+           inp->is_cubemap = (2 == itype);
            if (sampler)
            {
               static const char *filter[] = { "nearest", "linear", "mipmap", 0 };
@@ -544,7 +560,7 @@ int main(int argc, char **argv)
               smp->srgb   = switch_val(jfes_get_child(sampler, "srgb", 0), bools);
               smp->internal = switch_val(jfes_get_child(sampler, "internal", 0), internal);
            }
-           if (filepath && 0 == itype)
+           if (filepath && (0 == itype || 2 == itype))
            {
                 char *buf = malloc(filepath->data.string_val.size + 26);
                 strcpy(buf, "https://www.shadertoy.com");
@@ -567,7 +583,7 @@ int main(int argc, char **argv)
                 free(buf);
                 if (img)
                 {
-                    inp->tex = load_image(img, buf_size, smp);
+                    inp->tex = load_image(img, buf_size, smp, inp->is_cubemap);
                 }
            }
            //printf("i type=%d, id=%s, channel=%d\n", itype, inp->id, ichannel->data.int_val);
@@ -615,7 +631,7 @@ int main(int argc, char **argv)
         glUniform1f(s->iTime, cur_time); GLCHK;
         glUniform1f(s->iTimeDelta, cur_time - time_last); GLCHK;
         glUniform1i(s->iFrame, frame++); GLCHK;
-	if(cx > -0.5f)
+        if(cx > -0.5f)
             glUniform4f(s->iMouse, mx, my, cx, cy); GLCHK;
         glUniform4f(s->iDate, tm->tm_year, tm->tm_mon, tm->tm_mday, tm->tm_hour*3600 + tm->tm_min*60 + tm->tm_sec); GLCHK;
         glUniform1f(s->iSampleRate, 0); GLCHK;
@@ -629,10 +645,11 @@ int main(int argc, char **argv)
             int w = 0, h = 0;
             if (s->inputs[i].tex)
             {
+                int tgt = s->inputs[i].is_cubemap ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D;
                 glActiveTexture(GL_TEXTURE0 + tu); GLCHK;
-                glBindTexture(GL_TEXTURE_2D, s->inputs[i].tex); GLCHK;
-                glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w); GLCHK;
-                glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &h); GLCHK;
+                glBindTexture(tgt, s->inputs[i].tex); GLCHK;
+                glGetTexLevelParameteriv(tgt, 0, GL_TEXTURE_WIDTH, &w); GLCHK;
+                glGetTexLevelParameteriv(tgt, 0, GL_TEXTURE_HEIGHT, &h); GLCHK;
                 glUniform1i(s->iChannel[i], tu); GLCHK;
                 tu++;
             } else

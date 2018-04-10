@@ -1,1 +1,1 @@
-gcc -O2 -std=c99 -DHAVE_CURL -D_DEBUG *.c jfes/*.c -o toy -lcurl -lglfw -ldl -lm
+gcc -O2 -std=c99 -DHAVE_CURL -D_DEBUG -D_POSIX_C_SOURCE=200809 *.c jfes/*.c -o toy -lcurl -lglfw -ldl -lm

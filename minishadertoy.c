@@ -5,7 +5,12 @@
 #include <assert.h>
 #include <time.h>
 #include <sys/stat.h>
+#ifndef __MINGW32__
 #include <alloca.h>
+#define MKDIRARGS ,0777
+#else
+#define MKDIRARGS
+#endif
 #include <errno.h>
 #include "glad.h"
 #include "jfes/jfes.h"
@@ -111,7 +116,7 @@ static int mkpath(char *path)
 
     if (buffer[len - 1] == '/')
         buffer[len - 1] = '\0';
-    if (mkdir(buffer, 0777) == 0)
+    if (mkdir(buffer MKDIRARGS) == 0)
     {
         free(buffer);
         return 1;
@@ -126,7 +131,7 @@ static int mkpath(char *path)
             break;
         char sav = *p;
         *p = 0;
-        if ((mkdir(buffer, 0777) == -1) && (errno == ENOENT))
+        if ((mkdir(buffer MKDIRARGS) == -1) && (errno == ENOENT))
             goto fail;
         *p++ = sav;
     }

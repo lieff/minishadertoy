@@ -360,7 +360,7 @@ static void load_image(const stbi_uc *data, int len, SHADER_INPUT *inp, int is_c
     if (is_cubemap)
     {
         for (int i = 0; i < 6; i++)
-        {   // TODO
+        {
             glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGBA8, inp->w, inp->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pix); GLCHK;
         }
     } else
@@ -369,6 +369,20 @@ static void load_image(const stbi_uc *data, int len, SHADER_INPUT *inp, int is_c
     glGenerateMipmap(tgt); GLCHK;
 #endif
     glBindTexture(tgt, 0); GLCHK;
+}
+
+static void update_cubemap(const stbi_uc *data, int len, SHADER_INPUT *inp, int i)
+{
+    int n, w, h;
+    SAMPLER *s = &inp->sampler;
+    stbi_set_flip_vertically_on_load(s ? s->vflip : 0);
+    unsigned char *pix = stbi_load_from_memory(data, len, &w, &h, &n, 4);
+    if (!pix)
+        return;
+    assert(inp->w == w && inp->h == h);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, inp->tex); GLCHK;
+    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGBA8, inp->w, inp->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pix); GLCHK;
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0); GLCHK;
 }
 
 void fb_delete(FBO *f)
@@ -558,31 +572,52 @@ int main(int argc, char **argv)
               smp->srgb   = switch_val(jfes_get_child(sampler, "srgb", 0), bools);
               smp->internal = switch_val(jfes_get_child(sampler, "internal", 0), internal);
            }
-           if (filepath && (0 == itype || 2 == itype))
+           if (filepath && (0 == itype || inp->is_cubemap))
            {
-                char *buf = malloc(filepath->data.string_val.size + 26);
-                strcpy(buf, "https://www.shadertoy.com");
-                unescape_json(filepath->data.string_val.data, filepath->data.string_val.size, buf + 25);
-                char *img = load_file(buf + 26, &buf_size);
-#ifdef HAVE_CURL
-                if (!img)
+                int components = inp->is_cubemap ? 6 : 1;
+                char *buf = malloc(filepath->data.string_val.size + 26 + 2);
+                for (j = 0; j < components; j++)
                 {
-                    img = load_url(buf, &buf_size, 0);
-                    printf("load %s (%d bytes)\n", buf, buf_size);
-                    mkpath(buf + 26);
-                    FILE *f = fopen(buf + 26, "wb");
-                    if (f)
+                    strcpy(buf, "https://www.shadertoy.com");
+                    unescape_json(filepath->data.string_val.data, filepath->data.string_val.size, buf + 25);
+                    if (j)
                     {
-                        fwrite(img, 1, buf_size, f);
-                        fclose(f);
+                        char *s = strrchr(buf, '.');
+                        if (s)
+                        {
+                            int len = strlen(s);
+                            s[len + 2] = 0;
+                            for (; len; len--)
+                                s[len + 1] = s[len - 1];
+                            s[0] = '_';
+                            s[1] = '0' + j;
+                        }
                     }
-                }
+                    char *img = load_file(buf + 26, &buf_size);
+#ifdef HAVE_CURL
+                    if (!img)
+                    {
+                        img = load_url(buf, &buf_size, 0);
+                        printf("load %s (%d bytes)\n", buf, buf_size);
+                        mkpath(buf + 26);
+                        FILE *f = fopen(buf + 26, "wb");
+                        if (f)
+                        {
+                            fwrite(img, 1, buf_size, f);
+                            fclose(f);
+                        }
+                    }
 #endif
-                free(buf);
-                if (img)
-                {
-                    load_image(img, buf_size, inp, inp->is_cubemap);
+                     if (img)
+                     {
+                         if (0 == j)
+                             load_image(img, buf_size, inp, inp->is_cubemap);
+                         else
+                             update_cubemap(img, buf_size, inp, j);
+                         free(img);
+                     }
                 }
+                free(buf);
            }
            //printf("i type=%d, id=%s, channel=%d\n", itype, inp->id, ichannel->data.int_val);
         }

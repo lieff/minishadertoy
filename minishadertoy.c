@@ -329,17 +329,17 @@ static void gl_close()
     glfwTerminate();
 }
 
-static int load_image(const stbi_uc *data, int len, SAMPLER *s, int is_cubemap)
+static void load_image(const stbi_uc *data, int len, SHADER_INPUT *inp, int is_cubemap)
 {
-    GLuint tex;
-    int width, height, n;
+    int n;
+    SAMPLER *s = &inp->sampler;
     stbi_set_flip_vertically_on_load(s ? s->vflip : 0);
-    unsigned char *pix = stbi_load_from_memory(data, len, &width, &height, &n, 4);
+    unsigned char *pix = stbi_load_from_memory(data, len, &inp->w, &inp->h, &n, 4);
     if (!pix)
-        return 0;
-    glGenTextures(1, &tex); GLCHK;
+        return;
+    glGenTextures(1, &inp->tex); GLCHK;
     int tgt = is_cubemap ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D;
-    glBindTexture(tgt, tex); GLCHK;
+    glBindTexture(tgt, inp->tex); GLCHK;
 #ifndef USE_GLES3
     glTexParameteri(tgt, GL_GENERATE_MIPMAP, GL_TRUE); GLCHK;
 #endif
@@ -362,15 +362,14 @@ static int load_image(const stbi_uc *data, int len, SAMPLER *s, int is_cubemap)
     {
         for (int i = 0; i < 6; i++)
         {   // TODO
-            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pix); GLCHK;
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGBA8, inp->w, inp->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pix); GLCHK;
         }
-    }
-    glTexImage2D(tgt, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pix); GLCHK;
+    } else
+        glTexImage2D(tgt, 0, GL_RGBA8, inp->w, inp->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pix); GLCHK;
 #ifdef USE_GLES3
     glGenerateMipmap(tgt); GLCHK;
 #endif
     glBindTexture(tgt, 0); GLCHK;
-    return (int)tex;
 }
 
 void fb_delete(FBO *f)
@@ -583,7 +582,7 @@ int main(int argc, char **argv)
                 free(buf);
                 if (img)
                 {
-                    inp->tex = load_image(img, buf_size, smp, inp->is_cubemap);
+                    load_image(img, buf_size, inp, inp->is_cubemap);
                 }
            }
            //printf("i type=%d, id=%s, channel=%d\n", itype, inp->id, ichannel->data.int_val);
@@ -648,13 +647,11 @@ int main(int argc, char **argv)
                 int tgt = s->inputs[i].is_cubemap ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D;
                 glActiveTexture(GL_TEXTURE0 + tu); GLCHK;
                 glBindTexture(tgt, s->inputs[i].tex); GLCHK;
-                glGetTexLevelParameteriv(tgt, 0, GL_TEXTURE_WIDTH, &w); GLCHK;
-                glGetTexLevelParameteriv(tgt, 0, GL_TEXTURE_HEIGHT, &h); GLCHK;
                 glUniform1i(s->iChannel[i], tu); GLCHK;
                 tu++;
             } else
                 glUniform1i(s->iChannel[i], 0); GLCHK;
-            glUniform3f(s->iChannelResolution[i], w, h, 1.0f); GLCHK;
+            glUniform3f(s->iChannelResolution[i], s->inputs[i].w, s->inputs[i].h, 1.0f); GLCHK;
         }
 
         glRecti(1, 1, -1, -1); GLCHK;

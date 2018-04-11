@@ -345,7 +345,7 @@ static void load_image(const stbi_uc *data, int len, SHADER_INPUT *inp, int is_c
     int clamp = GL_CLAMP_TO_EDGE, min_filter = GL_LINEAR_MIPMAP_LINEAR, mag_filter = GL_LINEAR;
     if (s)
     {
-        clamp = s->wrap ? GL_REPEAT : GL_CLAMP_TO_EDGE;
+        clamp = (s->wrap && !is_cubemap) ? GL_REPEAT : GL_CLAMP_TO_EDGE;
         if (!s->filter)
         {
             min_filter = GL_NEAREST;

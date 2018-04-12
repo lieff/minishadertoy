@@ -22,6 +22,6 @@ if [ ! -d "curl" ]; then
   cd ../../
 fi
 
-x86_64-w64-mingw32-gcc -static -O2 -std=gnu99 -DHAVE_CURL -DCURL_STATICLIB -D_DEBUG -D_POSIX_C_SOURCE=200809 *.c jfes/*.c -o toy.exe \
+x86_64-w64-mingw32-gcc -static -Os -s -flto -std=c99 -DHAVE_CURL -DCURL_STATICLIB -D_POSIX_C_SOURCE=200809 *.c jfes/*.c -o toy.exe \
 -Lglfw/build/src -Iglfw/include -Lcurl/build/lib/.libs/ -Icurl/include \
 -lcurl -lglfw3 -lpthread -lm -lgdi32 -lws2_32 -lcrypt32

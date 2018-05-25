@@ -46,3 +46,10 @@ typedef struct SHADER
     GLuint iChannelResolution[4];
     GLuint iChannel[4];
 } SHADER;
+
+typedef struct PLATFORM_PARAMS
+{
+    int winWidth, winHeight, frame;
+    float mx, my, cx, cy, cur_time, time_last;
+    struct tm *tm;
+} PLATFORM_PARAMS;

@@ -162,11 +162,12 @@ static unsigned char *load_file(const char *fname, int *data_size)
     fseek(file, 0, SEEK_END);
     *data_size = (int)ftell(file);
     fseek(file, 0, SEEK_SET);
-    data = (unsigned char*)malloc(*data_size);
+    data = (unsigned char*)malloc(*data_size + 1);
     if (!data)
         goto fail;
     if ((int)fread(data, 1, *data_size, file) != *data_size)
         exit(1);
+    data[*data_size] = 0;
 fail:
     fclose(file);
     return data;
@@ -504,26 +505,43 @@ static int switch_val(jfes_value_t *str, const char **vals)
     return -1;
 }
 
-int main(int argc, char **argv)
+static int shadertoy_renderpass(SHADER *s, PLATFORM_PARAMS *p)
 {
-    int buf_size;
-    char *buffer;
-    if (argc < 2)
+    glUseProgram(s->prog); GLCHK;
+    glUniform3f(s->iResolution, (float)p->winWidth, (float)p->winHeight, 1.0f); GLCHK;
+    glUniform1f(s->iTime, p->cur_time); GLCHK;
+    glUniform1f(s->iTimeDelta, p->cur_time - p->time_last); GLCHK;
+    glUniform1i(s->iFrame, p->frame++); GLCHK;
+    if(p->cx > -0.5f)
+        glUniform4f(s->iMouse, p->mx, p->my, p->cx, p->cy); GLCHK;
+    glUniform4f(s->iDate, p->tm->tm_year, p->tm->tm_mon, p->tm->tm_mday, p->tm->tm_hour*3600 + p->tm->tm_min*60 + p->tm->tm_sec); GLCHK;
+    glUniform1f(s->iSampleRate, 0); GLCHK;
+
+    glActiveTexture(GL_TEXTURE0); GLCHK;
+    glBindTexture(GL_TEXTURE_2D, 0); GLCHK;
+    glColor4f(0.0f, 0.0f, 0.0f, 1.0f); GLCHK;
+    for (int i = 0, tu = 1; i < 4; i++)
     {
-        printf("usage: toy url or file\n");
-        return 0;
+        glUniform1f(s->iChannelTime[i], p->cur_time); GLCHK;
+        int w = 0, h = 0;
+        if (s->inputs[i].tex)
+        {
+            int tgt = s->inputs[i].is_cubemap ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D;
+            glActiveTexture(GL_TEXTURE0 + tu); GLCHK;
+            glBindTexture(tgt, s->inputs[i].tex); GLCHK;
+            glUniform1i(s->iChannel[i], tu); GLCHK;
+            tu++;
+        } else
+            glUniform1i(s->iChannel[i], 0); GLCHK;
+        glUniform3f(s->iChannelResolution[i], s->inputs[i].w, s->inputs[i].h, 1.0f); GLCHK;
     }
-#ifdef HAVE_CURL
-    if (strstr(argv[1], "://"))
-        buffer = load_url(argv[1], &buf_size, 1);
-    else
-#endif
-        buffer = load_file(argv[1], &buf_size);
-    if (!buffer)
-        return 1;
 
-    gl_init();
+    glRecti(1, 1, -1, -1); GLCHK;
+    glUseProgram(0); GLCHK;
+}
 
+int load_json(SHADER *shaders, char *buffer, int buf_size)
+{
     jfes_config_t config;
     config.jfes_malloc = (jfes_malloc_t)malloc;
     config.jfes_free = free;
@@ -534,9 +552,6 @@ int main(int argc, char **argv)
        return 1;
     jfes_value_t *root = value.data.array_val->items[0];
     jfes_value_t *rp = jfes_get_child(root, "renderpass", 0);
-
-    SHADER shaders[5];
-    memset(shaders, 0, sizeof(shaders));
 
     for (int i = 0; i < rp->data.array_val->count; i++)
     {
@@ -635,67 +650,70 @@ int main(int argc, char **argv)
         shader_init(s, unesc_buf, 0);
         free(unesc_buf);
     }
-    int frame = 0;
+    jfes_free_value(&config, &value);
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    int buf_size;
+    char *buffer;
+    if (argc < 2)
+    {
+        printf("usage: toy url or file\n");
+        return 0;
+    }
+    int is_url = 0 != strstr(argv[1], "://");
+#ifdef HAVE_CURL
+    if (is_url)
+        buffer = load_url(argv[1], &buf_size, 1);
+    else
+#endif
+        buffer = load_file(argv[1], &buf_size);
+    if (!buffer)
+        return 1;
+
+    gl_init();
+
+    SHADER shaders[5];
+    memset(shaders, 0, sizeof(shaders));
+    if (buffer[0] != '[' || load_json(shaders, buffer, buf_size))
+    {   // not a json
+        if (is_url)
+            return 1;
+        shader_init(shaders, buffer, 0);
+    }
+    if (buffer)
+        free(buffer);
+
+    PLATFORM_PARAMS p;
+    memset(&p, 0, sizeof(p));
     double time_start = glfwGetTime(), time_last = time_start;
     while (!glfwWindowShouldClose(_mainWindow))
     {
         glfwPollEvents();
-        int winWidth, winHeight, width, height, mkeys = 0;
+        int width, height, mkeys = 0;
         double mx, my;
-        glfwGetWindowSize(_mainWindow, &winWidth, &winHeight);
+        glfwGetWindowSize(_mainWindow, &p.winWidth, &p.winHeight);
         glfwGetFramebufferSize(_mainWindow, &width, &height);
         glfwGetCursorPos(_mainWindow, &mx, &my);
-        float cx = -1.0f, cy = -1.0f;
+        p.mx = mx, p.my = my;
+        p.cx = -1.0f, p.cy = -1.0f;
         if (GLFW_PRESS == glfwGetMouseButton(_mainWindow, GLFW_MOUSE_BUTTON_LEFT))
         {
-            cx = mx, cy = my;
+            p.cx = mx, p.cy = my;
         }
-        glViewport(0, 0, winWidth, winHeight); GLCHK;
+        glViewport(0, 0, p.winWidth, p.winHeight); GLCHK;
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT); GLCHK;
 
-        SHADER *s = &shaders[0];
-        float cur_time = glfwGetTime() - time_start;
+        p.cur_time = glfwGetTime() - time_start;
         time_t rawtime;
         time(&rawtime);
-        struct tm *tm = localtime(&rawtime);
+        p.tm = localtime(&rawtime);
 
-        glUseProgram(s->prog); GLCHK;
-        glUniform3f(s->iResolution, (float)winWidth, (float)winHeight, 1.0f); GLCHK;
-        glUniform1f(s->iTime, cur_time); GLCHK;
-        glUniform1f(s->iTimeDelta, cur_time - time_last); GLCHK;
-        glUniform1i(s->iFrame, frame++); GLCHK;
-        if(cx > -0.5f)
-            glUniform4f(s->iMouse, mx, my, cx, cy); GLCHK;
-        glUniform4f(s->iDate, tm->tm_year, tm->tm_mon, tm->tm_mday, tm->tm_hour*3600 + tm->tm_min*60 + tm->tm_sec); GLCHK;
-        glUniform1f(s->iSampleRate, 0); GLCHK;
-
-        glActiveTexture(GL_TEXTURE0); GLCHK;
-        glBindTexture(GL_TEXTURE_2D, 0); GLCHK;
-        glColor4f(0.0f, 0.0f, 0.0f, 1.0f); GLCHK;
-        for (int i = 0, tu = 1; i < 4; i++)
-        {
-            glUniform1f(s->iChannelTime[i], cur_time); GLCHK;
-            int w = 0, h = 0;
-            if (s->inputs[i].tex)
-            {
-                int tgt = s->inputs[i].is_cubemap ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D;
-                glActiveTexture(GL_TEXTURE0 + tu); GLCHK;
-                glBindTexture(tgt, s->inputs[i].tex); GLCHK;
-                glUniform1i(s->iChannel[i], tu); GLCHK;
-                tu++;
-            } else
-                glUniform1i(s->iChannel[i], 0); GLCHK;
-            glUniform3f(s->iChannelResolution[i], s->inputs[i].w, s->inputs[i].h, 1.0f); GLCHK;
-        }
-
-        glRecti(1, 1, -1, -1); GLCHK;
-        glUseProgram(0); GLCHK;
-        time_last = cur_time;
+        shadertoy_renderpass(&shaders[0], &p);
+        p.time_last = p.cur_time;
         glfwSwapBuffers(_mainWindow);
     }
-
-    jfes_free_value(&config, &value);
-    if (buffer)
-        free(buffer);
     return 0;
 }

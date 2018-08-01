@@ -34,6 +34,7 @@ typedef struct SHADER
     GLuint shader;
     SHADER_INPUT inputs[4];
     FBO output;
+    int type;
 
     GLuint iResolution;
     GLuint iTime;

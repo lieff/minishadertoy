@@ -423,22 +423,28 @@ void shader_delete(SHADER *s)
         glDeleteProgram(s->prog);
 }
 
-int shader_init(SHADER *s, const char *pCode, int is_compute)
+int shader_init(SHADER *s, const char *pCode, const char *pCommonCode, int is_compute)
 {
     char header[1024];
     snprintf(header, sizeof(header), shader_header, s->inputs[0].is_cubemap ? "Cube" : "2D", 
         s->inputs[1].is_cubemap ? "Cube" : "2D", s->inputs[2].is_cubemap ? "Cube" : "2D", s->inputs[3].is_cubemap ? "Cube" : "2D");
     size_t hdr_len = strlen(header);
     size_t source_len = strlen(pCode);
+    size_t common_len = pCommonCode ? strlen(pCommonCode) : 0;
     size_t footer_len = strlen(shader_footer);
-    GLchar *sh = (GLchar *)malloc(hdr_len + source_len + footer_len + 1);
-    memcpy(sh, header, hdr_len);
-    memcpy(sh + hdr_len, pCode, source_len);
-    sh[hdr_len + source_len] = 0;
-    if (!strstr(sh, "void main("))
+    GLchar *sh = (GLchar *)malloc(hdr_len + source_len + common_len + footer_len + 1);
+    GLchar *psh = sh;
+    memcpy(psh, header, hdr_len); psh += hdr_len;
+    if (pCommonCode)
     {
-        memcpy(sh + hdr_len + source_len, shader_footer, footer_len);
-        sh[hdr_len + source_len + footer_len] = 0;
+        memcpy(psh, pCommonCode, common_len); psh += common_len;
+    }
+    memcpy(psh, pCode, source_len); psh += source_len;
+    *psh = 0;
+    if (!strstr(sh, "void main(") && !strstr(sh, "void main "))
+    {
+        memcpy(psh, shader_footer, footer_len); psh += footer_len;
+        *psh = 0;
     }
 
     s->prog = glCreateProgram(); GLCHK;
@@ -553,6 +559,26 @@ int load_json(SHADER *shaders, char *buffer, int buf_size)
     jfes_value_t *root = value.data.array_val->items[0];
     jfes_value_t *rp = jfes_get_child(root, "renderpass", 0);
 
+    char *common_code = 0;
+    for (int i = 0; i < rp->data.array_val->count; i++)
+    {
+        SHADER *s = &shaders[i];
+        jfes_value_t *pass = rp->data.array_val->items[i];
+        jfes_value_t *type = jfes_get_child(pass, "type", 0);
+        static const char *rp_types[] = { "image", "common", "buffer", "cubemap", "sound", 0 };
+        s->type = switch_val(type, rp_types);
+        if (1 == s->type)
+        {
+            if (common_code)
+            {
+                printf("error: common code already exists.");
+                exit(1);
+            }
+            jfes_value_t *code = jfes_get_child(pass, "code", 0);
+            common_code = strdup(code->data.string_val.data);
+            unescape_json(code->data.string_val.data, code->data.string_val.size, common_code);
+        }
+    }
     for (int i = 0; i < rp->data.array_val->count; i++)
     {
         SHADER *s = &shaders[i];
@@ -560,7 +586,8 @@ int load_json(SHADER *shaders, char *buffer, int buf_size)
         jfes_value_t *inputs  = jfes_get_child(pass, "inputs", 0);
         jfes_value_t *outputs = jfes_get_child(pass, "outputs", 0);
         jfes_value_t *code    = jfes_get_child(pass, "code", 0);
-        jfes_value_t *type    = jfes_get_child(pass, "type", 0);
+        if (s->type)
+            continue;
         int j;
         for (j = 0; j < inputs->data.array_val->count; j++)
         {
@@ -647,7 +674,7 @@ int load_json(SHADER *shaders, char *buffer, int buf_size)
         //printf("type=%s\n", type->data.string_val.data);
         char *unesc_buf = strdup(code->data.string_val.data);
         unescape_json(code->data.string_val.data, code->data.string_val.size, unesc_buf);
-        shader_init(s, unesc_buf, 0);
+        shader_init(s, unesc_buf, common_code, 0);
         free(unesc_buf);
     }
     jfes_free_value(&config, &value);
@@ -681,7 +708,7 @@ int main(int argc, char **argv)
     {   // not a json
         if (is_url)
             return 1;
-        shader_init(shaders, buffer, 0);
+        shader_init(shaders, buffer, 0, 0);
     }
     if (buffer)
         free(buffer);

@@ -4,6 +4,8 @@
 #include <assert.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <libgen.h>
+#include <unistd.h>
 #include <errno.h>
 #include "glad.h"
 #include "jfes/jfes.h"
@@ -329,12 +331,12 @@ static void gl_close()
     glfwTerminate();
 }
 
-static void load_image(const stbi_uc *data, int len, SHADER_INPUT *inp, int is_cubemap)
+static void load_image(const char *data, int len, SHADER_INPUT *inp, int is_cubemap)
 {
     int n;
     SAMPLER *s = &inp->sampler;
     stbi_set_flip_vertically_on_load(s ? s->vflip : 0);
-    unsigned char *pix = stbi_load_from_memory(data, len, &inp->w, &inp->h, &n, 4);
+    unsigned char *pix = stbi_load_from_memory((const stbi_uc *)data, len, &inp->w, &inp->h, &n, 4);
     if (!pix)
         return;
     glGenTextures(1, &inp->tex); GLCHK;
@@ -372,12 +374,12 @@ static void load_image(const stbi_uc *data, int len, SHADER_INPUT *inp, int is_c
     glBindTexture(tgt, 0); GLCHK;
 }
 
-static void update_cubemap(const stbi_uc *data, int len, SHADER_INPUT *inp, int i)
+static void update_cubemap(const char *data, int len, SHADER_INPUT *inp, int i)
 {
     int n, w, h;
     SAMPLER *s = &inp->sampler;
     stbi_set_flip_vertically_on_load(s ? s->vflip : 0);
-    unsigned char *pix = stbi_load_from_memory(data, len, &w, &h, &n, 4);
+    unsigned char *pix = stbi_load_from_memory((const stbi_uc *)data, len, &w, &h, &n, 4);
     if (!pix)
         return;
     assert(inp->w == w && inp->h == h);
@@ -410,7 +412,7 @@ void fb_init(FBO *f, int width, int height, int float_tex)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); GLCHK;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); GLCHK;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); GLCHK;
-    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, f->framebufferTex, 0); GLCHK;
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, f->framebufferTex, 0); GLCHK;
     glBindTexture(GL_TEXTURE_2D, 0); GLCHK;
     glBindFramebuffer(GL_FRAMEBUFFER, 0); GLCHK;
 }
@@ -423,10 +425,10 @@ void shader_delete(SHADER *s)
         glDeleteProgram(s->prog);
 }
 
-int shader_init(SHADER *s, const char *pCode, const char *pCommonCode, int is_compute)
+int shader_init(SHADER *s, const char *pCode, const char *pCommonCode/*, int is_compute*/)
 {
     char header[1024];
-    snprintf(header, sizeof(header), shader_header, s->inputs[0].is_cubemap ? "Cube" : "2D", 
+    snprintf(header, sizeof(header), shader_header, s->inputs[0].is_cubemap ? "Cube" : "2D",
         s->inputs[1].is_cubemap ? "Cube" : "2D", s->inputs[2].is_cubemap ? "Cube" : "2D", s->inputs[3].is_cubemap ? "Cube" : "2D");
     size_t hdr_len = strlen(header);
     size_t source_len = strlen(pCode);
@@ -448,7 +450,7 @@ int shader_init(SHADER *s, const char *pCode, const char *pCommonCode, int is_co
     }
 
     s->prog = glCreateProgram(); GLCHK;
-    s->shader = glCreateShader(is_compute ? GL_COMPUTE_SHADER : GL_FRAGMENT_SHADER); GLCHK;
+    s->shader = glCreateShader(/*is_compute ? GL_COMPUTE_SHADER : */GL_FRAGMENT_SHADER); GLCHK;
     glShaderSource(s->shader, 1, (const GLchar **)&sh, 0); GLCHK;
     glCompileShader(s->shader); GLCHK;
 #ifdef _DEBUG
@@ -488,7 +490,7 @@ int shader_init(SHADER *s, const char *pCode, const char *pCommonCode, int is_co
     s->iMouse      = glGetUniformLocation(s->prog, "iMouse"); GLCHK;
     s->iDate       = glGetUniformLocation(s->prog, "iDate"); GLCHK;
     s->iSampleRate = glGetUniformLocation(s->prog, "iSampleRate"); GLCHK;
-    for (int i = 0; i < 4; i++) 
+    for (int i = 0; i < 4; i++)
     {
         char buf[64];
         sprintf(buf, "iChannel%d", i);
@@ -501,17 +503,7 @@ int shader_init(SHADER *s, const char *pCode, const char *pCommonCode, int is_co
     return 1;
 }
 
-static int switch_val(jfes_value_t *str, const char **vals)
-{
-    for (int i = 0; *vals; i++, vals++)
-        if (!strcmp(*vals, str->data.string_val.data))
-            return i;
-    perror(str->data.string_val.data);
-    assert(0);
-    return -1;
-}
-
-static int shadertoy_renderpass(SHADER *s, PLATFORM_PARAMS *p)
+void shadertoy_renderpass(SHADER *s, PLATFORM_PARAMS *p)
 {
     glUseProgram(s->prog); GLCHK;
     glUniform3f(s->iResolution, (float)p->winWidth, (float)p->winHeight, 1.0f); GLCHK;
@@ -529,7 +521,7 @@ static int shadertoy_renderpass(SHADER *s, PLATFORM_PARAMS *p)
     for (int i = 0, tu = 1; i < 4; i++)
     {
         glUniform1f(s->iChannelTime[i], p->cur_time); GLCHK;
-        int w = 0, h = 0;
+        //int w = 0, h = 0;
         if (s->inputs[i].tex)
         {
             int tgt = s->inputs[i].is_cubemap ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D;
@@ -544,6 +536,16 @@ static int shadertoy_renderpass(SHADER *s, PLATFORM_PARAMS *p)
 
     glRecti(1, 1, -1, -1); GLCHK;
     glUseProgram(0); GLCHK;
+}
+
+static int switch_val(jfes_value_t *str, const char **vals)
+{
+    for (int i = 0; *vals; i++, vals++)
+        if (!strcmp(*vals, str->data.string_val.data))
+            return i;
+    perror(str->data.string_val.data);
+    assert(0);
+    return -1;
 }
 
 int load_json(SHADER *shaders, char *buffer, int buf_size)
@@ -667,14 +669,14 @@ int load_json(SHADER *shaders, char *buffer, int buf_size)
         {
            jfes_value_t *output = outputs->data.array_val->items[j];
            jfes_value_t *oid    = jfes_get_child(output, "id", 0);
-           jfes_value_t *ochannel = jfes_get_child(output, "channel", 0);
+           //jfes_value_t *ochannel = jfes_get_child(output, "channel", 0);
            s->output.id = oid->data.string_val.data;
            //printf("o id=%s, channel=%d\n", s->output.id, ochannel->data.int_val);
         }
         //printf("type=%s\n", type->data.string_val.data);
         char *unesc_buf = strdup(code->data.string_val.data);
         unescape_json(code->data.string_val.data, code->data.string_val.size, unesc_buf);
-        shader_init(s, unesc_buf, common_code, 0);
+        shader_init(s, unesc_buf, common_code);
         free(unesc_buf);
     }
     jfes_free_value(&config, &value);
@@ -700,6 +702,10 @@ int main(int argc, char **argv)
     if (!buffer)
         return 1;
 
+    char result[PATH_MAX];
+    ssize_t count = readlink("/proc/self/exe", result, PATH_MAX);
+    int res = chdir(dirname(result));
+    (void)res;
     gl_init();
 
     SHADER shaders[5];
@@ -708,7 +714,7 @@ int main(int argc, char **argv)
     {   // not a json
         if (is_url)
             return 1;
-        shader_init(shaders, buffer, 0, 0);
+        shader_init(shaders, buffer, 0);
     }
     if (buffer)
         free(buffer);
@@ -719,6 +725,8 @@ int main(int argc, char **argv)
     while (!glfwWindowShouldClose(_mainWindow))
     {
         glfwPollEvents();
+        if (glfwGetKey(_mainWindow, GLFW_KEY_ESCAPE))
+            glfwSetWindowShouldClose(_mainWindow, 1);
         int width, height, mkeys = 0;
         double mx, my;
         glfwGetWindowSize(_mainWindow, &p.winWidth, &p.winHeight);

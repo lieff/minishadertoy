@@ -51,7 +51,7 @@ typedef struct jfes_string {
 /** JFES token types */
 typedef enum jfes_token_type {
     jfes_type_undefined          = 0x00,        /**< Undefined token type. */
-    
+
     jfes_type_null               = 0x01,        /**< Null token type. */
 
     jfes_type_boolean            = 0x02,        /**< Boolean token type. */
@@ -95,7 +95,7 @@ typedef struct jfes_tokens_data {
 
 /** JFES parser structure. */
 typedef struct jfes_parser {
-    jfes_size_t             pos;                /**< Current offset in json string. */ 
+    jfes_size_t             pos;                /**< Current offset in json string. */
     jfes_size_t             next_token;         /**< Next token to allocate. */
     int                     superior_token;     /**< Superior token node. */
 
@@ -114,7 +114,7 @@ typedef struct jfes_object_map {
 
 /** JSON array structure. */
 typedef struct jfes_array {
-    jfes_value_t            **items;            /**< JSON items in array. */    
+    jfes_value_t            **items;            /**< JSON items in array. */
     jfes_size_t             count;              /**< Items count in array. */
 } jfes_array_t;
 
@@ -142,7 +142,7 @@ struct jfes_value {
     jfes_value_data_t       data;               /**< Value data. */
 };
 
-/** 
+/**
     JFES status analizer function.
 
     \param[in]      status              Status variable.
@@ -180,7 +180,7 @@ jfes_status_t jfes_init_parser(jfes_parser_t *parser, const jfes_config_t *confi
 jfes_status_t jfes_reset_parser(jfes_parser_t *parser);
 
 /**
-    Runs JSON parser. It parses a JSON data string into an 
+    Runs JSON parser. It parses a JSON data string into an
     array of tokens, each describing a single JSON object.
 
     \param[in]      parser              Pointer to the jfes_parser_t object.
@@ -192,7 +192,7 @@ jfes_status_t jfes_reset_parser(jfes_parser_t *parser);
 
     \return         jfes_success if everything is OK.
 */
-jfes_status_t jfes_parse_tokens(jfes_parser_t *parser, const char *json, 
+jfes_status_t jfes_parse_tokens(jfes_parser_t *parser, const char *json,
     jfes_size_t length, jfes_token_t *tokens, jfes_size_t *max_tokens_count);
 
 /**
@@ -357,7 +357,7 @@ jfes_status_t jfes_remove_from_array(const jfes_config_t *config, const jfes_val
 
     \return         jfes_success if everything is OK.
 */
-jfes_status_t jfes_set_object_property(const jfes_config_t *config, const jfes_value_t *value, 
+jfes_status_t jfes_set_object_property(const jfes_config_t *config, const jfes_value_t *value,
     jfes_value_t *item, const char *key, jfes_size_t key_length);
 
 /**
@@ -371,7 +371,7 @@ jfes_status_t jfes_set_object_property(const jfes_config_t *config, const jfes_v
 
     \return         jfes_success if everything is OK.
 */
-jfes_status_t jfes_remove_object_property(const jfes_config_t *config, const jfes_value_t *value, 
+jfes_status_t jfes_remove_object_property(const jfes_config_t *config, const jfes_value_t *value,
     const char *key, jfes_size_t key_length);
 
 /**

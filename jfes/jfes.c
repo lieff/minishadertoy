@@ -26,7 +26,7 @@ typedef enum jfes_integer_type {
     jfes_octal_integer              = 0x08,     /**< Octal integer (starts from zero: `023` = `19`) */
     jfes_decimal_integer            = 0x0A,     /**< Decimal integer */
     jfes_hexadecimal_integer        = 0x10,     /**< Hexadecimal integer (mask: `0x...` or `0X...`) */
-    
+
 } jfes_integer_type_t;
 
 /** Stream helper. */
@@ -88,7 +88,7 @@ static int jfes_check_configuration(const jfes_config_t *config) {
     return config && config->jfes_malloc && config->jfes_free;
 }
 
-/** 
+/**
     Allocates jfes_string.
 
     \param[in]      config              JFES configuration.
@@ -220,8 +220,8 @@ static int jfes_is_boolean(const char *data, jfes_size_t length) {
         length = jfes_strlen(data);
     }
 
-    return length == jfes_strlen(JFES_TRUE_VALUE) && jfes_memcmp(data, JFES_TRUE_VALUE, length) == 0 ||
-           length == jfes_strlen(JFES_FALSE_VALUE) && jfes_memcmp(data, JFES_FALSE_VALUE, length) == 0;
+    return (length == jfes_strlen(JFES_TRUE_VALUE) && jfes_memcmp(data, JFES_TRUE_VALUE, length) == 0) ||
+           (length == jfes_strlen(JFES_FALSE_VALUE) && jfes_memcmp(data, JFES_FALSE_VALUE, length) == 0);
 }
 
 /**
@@ -248,7 +248,7 @@ static int jfes_is_integer(const char *data, jfes_size_t length) {
     }
 
     int hexadecimal_case = 0;
-    if (length > offset + 2 && data[offset] == '0' && 
+    if (length > offset + 2 && data[offset] == '0' &&
        (data[offset + 1] == 'x' || data[offset + 1] == 'X')) {
         hexadecimal_case = 1;
     }
@@ -257,7 +257,7 @@ static int jfes_is_integer(const char *data, jfes_size_t length) {
 
     for (jfes_size_t i = offset; i < length; i++) {
         if ((data[i] >= '0' && data[i] <= '9') || (hexadecimal_case &&
-            ((data[i] >= 'A' && data[i] <= 'F') || (data[i] >= 'a' && data[i] <= 'f'))) || 
+            ((data[i] >= 'A' && data[i] <= 'F') || (data[i] >= 'a' && data[i] <= 'f'))) ||
             (i == offset + 1 && ((data[i] == 'x') || (data[i] == 'X')) && length > offset + 2)) {
 
             if (hexadecimal_case && i == offset && data[i] != '0') {
@@ -345,7 +345,7 @@ static int jfes_string_to_boolean(const char *data, jfes_size_t length) {
     return 0;
 }
 
-/** 
+/**
     Analyzes string and returns the integer type.
 
     \param[in]      data                String for analysis.
@@ -424,7 +424,7 @@ static int jfes_string_to_integer(const char *data, jfes_size_t length) {
 
     for (jfes_size_t i = offset; i < length; i++) {
         char c = data[i];
-        if ((c >= '0' && c <= '9') || (base == jfes_hexadecimal_integer && 
+        if ((c >= '0' && c <= '9') || (base == jfes_hexadecimal_integer &&
             ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))) {
             int value = 0;
             if (c >= '0' && c <= '9') {
@@ -487,7 +487,7 @@ static double jfes_string_to_double(const char *data, jfes_size_t length) {
             if (after_dot) {
                 exp--;
             }
-        } 
+        }
         else if (c == '.') {
             after_dot = 1;
             continue;
@@ -643,7 +643,7 @@ char *jfes_double_to_string_r(double value, char *output, jfes_size_t output_siz
 
     output[value_length] = '.';
 
-    char *fractional_value_s = jfes_integer_to_string_r(fractional_int, 
+    char *fractional_value_s = jfes_integer_to_string_r(fractional_int,
         &output[value_length + 1], output_size - value_length - 1);
     if (!fractional_value_s) {
         return JFES_NULL;
@@ -694,7 +694,7 @@ jfes_status_t jfes_initialize_stringstream(jfes_stringstream_t *stream, char *da
     \param[in]      data                Data to add.
     \param[in]      data_length         Optional. Child key length. You can pass 0
                                         if the data string is zero-terminated.
-    
+
     \return         jfes_success if everything is OK.
 */
 jfes_status_t jfes_add_to_stringstream(jfes_stringstream_t *stream, char *data, jfes_size_t data_length) {
@@ -712,7 +712,7 @@ jfes_status_t jfes_add_to_stringstream(jfes_stringstream_t *stream, char *data, 
     jfes_status_t status = jfes_success;
 
     jfes_size_t size_to_add = data_length;
-    
+
     if (stream->current_index + size_to_add > stream->max_size) {
         size_to_add = stream->max_size - stream->current_index;
         status = jfes_no_memory;
@@ -737,7 +737,7 @@ static jfes_token_t *jfes_allocate_token(jfes_parser_t *parser, jfes_token_t *to
     if (!parser || !tokens || max_tokens == 0 || parser->next_token >= max_tokens) {
         return JFES_NULL;
     }
-    
+
     jfes_token_t *token = &tokens[parser->next_token++];
     token->start = token->end = -1;
     token->size = 0;
@@ -745,7 +745,7 @@ static jfes_token_t *jfes_allocate_token(jfes_parser_t *parser, jfes_token_t *to
     return token;
 }
 
-/** 
+/**
     Analyzes the source string and returns most likely type.
 
     \param[in]      data                Source string bytes.
@@ -808,7 +808,9 @@ static jfes_status_t jfes_parse_primitive(jfes_parser_t *parser, const char *jso
         return jfes_invalid_arguments;
     }
 
+#ifdef JFES_STRICT
     int found = 0;
+#endif
 
     jfes_size_t start = parser->pos;
     while (length && json[parser->pos] != '\0') {
@@ -819,7 +821,9 @@ static jfes_status_t jfes_parse_primitive(jfes_parser_t *parser, const char *jso
             || c == ':'
 #endif
             ) {
+#ifdef JFES_STRICT
             found = 1;
+#endif
             break;
         }
 
@@ -1102,7 +1106,7 @@ jfes_status_t jfes_create_node(jfes_tokens_data_t *tokens_data, jfes_value_t *va
 
     jfes_token_t *token = &tokens_data->tokens[tokens_data->current_token];
     tokens_data->current_token++;
-    
+
     value->type = token->type;
 
     switch (token->type) {
@@ -1110,7 +1114,7 @@ jfes_status_t jfes_create_node(jfes_tokens_data_t *tokens_data, jfes_value_t *va
         break;
 
     case jfes_type_boolean:
-        value->data.bool_val = jfes_string_to_boolean(tokens_data->json_data + token->start, 
+        value->data.bool_val = jfes_string_to_boolean(tokens_data->json_data + token->start,
             token->end - token->start);
         break;
 
@@ -1125,7 +1129,7 @@ jfes_status_t jfes_create_node(jfes_tokens_data_t *tokens_data, jfes_value_t *va
         break;
 
     case jfes_type_string:
-        jfes_create_string(tokens_data->config, &value->data.string_val, 
+        jfes_create_string(tokens_data->config, &value->data.string_val,
             tokens_data->json_data + token->start, token->end - token->start);
         break;
 
@@ -1187,10 +1191,10 @@ jfes_status_t jfes_create_node(jfes_tokens_data_t *tokens_data, jfes_value_t *va
                 value->data.object_val->items[i] = item;
 
                 jfes_token_t *key_token = &tokens_data->tokens[tokens_data->current_token++];
-                
+
                 jfes_size_t key_length = key_token->end - key_token->start;
 
-                jfes_create_string(tokens_data->config, &item->key, 
+                jfes_create_string(tokens_data->config, &item->key,
                     tokens_data->json_data + key_token->start, key_length);
 
                 item->value = (jfes_value_t*)jfes_malloc(sizeof(jfes_value_t));
@@ -1246,7 +1250,7 @@ jfes_status_t jfes_parse_to_value(const jfes_config_t *config, const char *json,
         tokens_count *= 2;
         parser.config->jfes_free(tokens);
     }
-    
+
     if (jfes_status_is_bad(status)) {
         return status;
     }
@@ -1385,7 +1389,7 @@ jfes_value_t *jfes_create_string_value(const jfes_config_t *config, const char *
         return JFES_NULL;
     }
     result->type = jfes_type_string;
-    
+
     jfes_status_t status = jfes_create_string(config, &result->data.string_val, value, length);
     if (jfes_status_is_bad(status)) {
         config->jfes_free(result);
@@ -1646,7 +1650,7 @@ static jfes_status_t jfes_value_to_stream_helper(const jfes_value_t *value, jfes
 
     \return         jfes_success if everything is OK.
 */
-static jfes_status_t jfes_array_value_to_stream_helper(const jfes_value_t *value, jfes_stringstream_t *stream, 
+static jfes_status_t jfes_array_value_to_stream_helper(const jfes_value_t *value, jfes_stringstream_t *stream,
         int beautiful, jfes_size_t indent, const char *indent_string) {
     if (!value || !stream || value->type != jfes_type_array) {
         return jfes_invalid_arguments;
@@ -1668,7 +1672,7 @@ static jfes_status_t jfes_array_value_to_stream_helper(const jfes_value_t *value
 
     for (jfes_size_t i = 0; i < value->data.array_val->count; i++) {
         jfes_value_t *item = value->data.array_val->items[i];
-        
+
         if (beautiful && with_indent) {
             for (jfes_size_t j = 0; j < indent + 1; j++) {
                 jfes_add_to_stringstream(stream, (char*)indent_string, 0);
@@ -1685,7 +1689,7 @@ static jfes_status_t jfes_array_value_to_stream_helper(const jfes_value_t *value
         }
 
         if (beautiful) {
-            if ((i < value->data.array_val->count - 1 && 
+            if ((i < value->data.array_val->count - 1 &&
                 (value->data.array_val->items[i + 1]->type == jfes_type_array ||
                 value->data.array_val->items[i + 1]->type == jfes_type_object))
                 ||
@@ -1772,7 +1776,7 @@ static jfes_status_t jfes_object_value_to_stream_helper(const jfes_value_t *valu
     return jfes_add_to_stringstream(stream, "}", 0);
 }
 
-static jfes_status_t jfes_value_to_stream_helper(const jfes_value_t *value, jfes_stringstream_t *stream, 
+static jfes_status_t jfes_value_to_stream_helper(const jfes_value_t *value, jfes_stringstream_t *stream,
         int beautiful, jfes_size_t indent, const char *indent_string) {
     if (!value || !stream) {
         return jfes_invalid_arguments;

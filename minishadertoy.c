@@ -732,11 +732,11 @@ int main(int argc, char **argv)
         glfwGetWindowSize(_mainWindow, &p.winWidth, &p.winHeight);
         glfwGetFramebufferSize(_mainWindow, &width, &height);
         glfwGetCursorPos(_mainWindow, &mx, &my);
-        p.mx = mx, p.my = my;
+        p.mx = mx, p.my = p.winHeight - my;
         p.cx = -1.0f, p.cy = -1.0f;
         if (GLFW_PRESS == glfwGetMouseButton(_mainWindow, GLFW_MOUSE_BUTTON_LEFT))
         {
-            p.cx = mx, p.cy = my;
+            p.cx = mx, p.cy = p.my;
         }
         glViewport(0, 0, p.winWidth, p.winHeight); GLCHK;
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT); GLCHK;

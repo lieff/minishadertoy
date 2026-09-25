@@ -11,6 +11,7 @@
 #include "jfes/jfes.h"
 #include <GLFW/glfw3.h>
 #include "minishadertoy.h"
+#include "movie_recorder.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
@@ -683,22 +684,184 @@ int load_json(SHADER *shaders, char *buffer, int buf_size)
     return 0;
 }
 
+typedef struct
+{
+    int record;
+    int width, height;
+    int fps;
+    int bitrate_kbps;
+    float time;
+    const char *shader_path;
+    const char *output_path;
+} CmdLine;
+
+static void print_usage(void)
+{
+    printf("usage:\n"
+           "  toy <url or file>\n"
+           "  toy -record <width> <height> [-fps <fps>] [-time <sec>] [-br <kbps>] <shader> <out.mp4>\n");
+}
+
+static int parse_args(int argc, char **argv, CmdLine *cl)
+{
+    const char *positional[2] = { 0, 0 };
+    int npos = 0, i;
+
+    memset(cl, 0, sizeof(*cl));
+    cl->width = 1024;
+    cl->height = 768;
+    cl->fps = 60;
+    cl->bitrate_kbps = 0;
+    cl->time = 30.0f;
+
+    for (i = 1; i < argc; i++)
+    {
+        if (!strcmp(argv[i], "-record"))
+        {
+            cl->record = 1;
+            if (i + 2 >= argc)
+            {
+                printf("error: -record expects <width> <height>\n");
+                return 0;
+            }
+            cl->width = atoi(argv[++i]);
+            cl->height = atoi(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "-fps"))
+        {
+            if (i + 1 >= argc)
+            {
+                printf("error: -fps expects a value\n");
+                return 0;
+            }
+            cl->fps = atoi(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "-br"))
+        {
+            if (i + 1 >= argc)
+            {
+                printf("error: -br expects a value\n");
+                return 0;
+            }
+            cl->bitrate_kbps = atoi(argv[++i]);
+        }
+        else if (!strcmp(argv[i], "-time"))
+        {
+            if (i + 1 >= argc)
+            {
+                printf("error: -time expects a value\n");
+                return 0;
+            }
+            cl->time = (float)atof(argv[++i]);
+        }
+        else if (argv[i][0] == '-')
+        {
+            printf("error: unknown option %s\n", argv[i]);
+            return 0;
+        }
+        else if (npos < 2)
+        {
+            positional[npos++] = argv[i];
+        }
+    }
+
+    cl->shader_path = positional[0];
+    cl->output_path = positional[1];
+
+    if (!cl->shader_path)
+        return 0;
+    if (cl->record && !cl->output_path)
+        cl->output_path = "out.mp4";
+    return 1;
+}
+
+// Offline render + encode: draws each frame at a fixed timestep into an
+// offscreen framebuffer and muxes it into an MP4 file, as fast as possible.
+static int record_shader(SHADER *shader, int width, int height, int fps, float duration, int bitrate_kbps, const char *output)
+{
+    int total_frames = (int)(duration * fps);
+    if (total_frames <= 0 || width <= 0 || height <= 0 || fps <= 0)
+    {
+        printf("error: invalid width/height/fps/time\n");
+        return 1;
+    }
+
+    FBO fbo;
+    memset(&fbo, 0, sizeof(fbo));
+    fbo.id = "record";
+    fb_init(&fbo, width, height, 0);
+
+    MovieRecorder *rec = movie_recorder_open(output, width, height, fps, bitrate_kbps);
+    if (!rec)
+    {
+        printf("error: cannot open %s for writing\n", output);
+        fb_delete(&fbo);
+        return 1;
+    }
+
+    unsigned char *rgba = (unsigned char *)malloc((size_t)width * height * 4);
+    if (!rgba)
+    {
+        movie_recorder_close(rec);
+        fb_delete(&fbo);
+        return 1;
+    }
+
+    PLATFORM_PARAMS p;
+    memset(&p, 0, sizeof(p));
+    p.winWidth = width;
+    p.winHeight = height;
+    p.cx = -1.0f;
+    p.cy = -1.0f;
+    time_t rawtime;
+    time(&rawtime);
+    p.tm = localtime(&rawtime);
+
+    double frame_time = 1.0 / fps;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo.framebuffer); GLCHK;
+    for (int frame = 0; frame < total_frames; frame++)
+    {
+        p.cur_time = frame * frame_time;
+        glViewport(0, 0, width, height); GLCHK;
+        glClear(GL_COLOR_BUFFER_BIT); GLCHK;
+        shadertoy_renderpass(shader, &p);
+        p.time_last = p.cur_time;
+
+        glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba); GLCHK;
+        if (!movie_recorder_add_frame(rec, rgba))
+        {
+            printf("error: encoding frame %d failed\n", frame);
+            break;
+        }
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0); GLCHK;
+
+    movie_recorder_close(rec);
+    fb_delete(&fbo);
+    free(rgba);
+
+    printf("recorded %d frames to %s\n", total_frames, output);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     int buf_size;
     char *buffer;
-    if (argc < 2)
+    CmdLine cl;
+    if (!parse_args(argc, argv, &cl))
     {
-        printf("usage: toy url or file\n");
-        return 0;
+        print_usage();
+        return 1;
     }
-    int is_url = 0 != strstr(argv[1], "://");
+    int is_url = 0 != strstr(cl.shader_path, "://");
 #ifdef HAVE_CURL
     if (is_url)
-        buffer = load_url(argv[1], &buf_size, 1);
+        buffer = load_url(cl.shader_path, &buf_size, 1);
     else
 #endif
-        buffer = load_file(argv[1], &buf_size);
+        buffer = load_file(cl.shader_path, &buf_size);
     if (!buffer)
         return 1;
 
@@ -718,6 +881,9 @@ int main(int argc, char **argv)
     }
     if (buffer)
         free(buffer);
+
+    if (cl.record)
+        return record_shader(&shaders[0], cl.width, cl.height, cl.fps, cl.time, cl.bitrate_kbps, cl.output_path);
 
     PLATFORM_PARAMS p;
     memset(&p, 0, sizeof(p));
